@@ -4,57 +4,35 @@
 
 - 전반적인 인프라 소개
 - 가비아를 통한 DNS 설정
+  - DNS 설정
+  - 레코드의 종류
 - 프론트엔드 인프라 구조
+  - S3
+  - CloudFront
 - 백엔드 인프라 구조
+  - ALB
+  - EC2
+  - RDS
 - 기타
+  - WAS
+  - CloudWatch
 - 참고 자료
 
 ## 전반적인 인프라 소개
 
 ![image](./image/ddangkong-infra-structure.png)
 
-- 프론트 구성
-  - 정적 파일을 관리 (모든 유저에게 똑같이 보여주는 파일)
-  - S3, CloudFront를 이용함
+위 구성은 크게 프론트 부분과 백엔드 부분으로 나눌 수 있다. 프론트엔드는 모든 유저에게 똑같이 제공되는 정적 파일을 담당한다. S3에서 정적 파일을 보관하며, CloudFront에서 정적 파일을 쉽게 이용할 수 있도록 도와준다. 그리고 유저, 상황마다 바뀌는 정보는 백엔드에게 요청한다.
 
-- 백엔드 구성
-  - 동적 로직을 관리
-  - ELB, EC2, RDS를 사용
-  - 네트워크 분리를 위해 VPC와 Subnet을 사용 (글 분량에 따라 언급)
+백엔드는 유저, 상황마다 바뀌는 정보를 다룬다. 서버로 보내는 각 요청이 DB의 데이터를 조회하거나 수정하는 역할을 한다. ALB(Application Load Balancer)는 두 서버의 로드 밸런싱을 담당하며, EC2는 WAS를 실행을 담당한다. 데이터베이스는 RDS로 구성하였으며 소스와 레플리카를 따로 두었다.
 
-- 기타 (글 분량에 따라 언급)
-  - WAF
-  - CloudWatch
+추가적으로 백엔드 요청에서 ALB에 도달하기 전, WAF(Web Application Firewall)에서 원치 않는 트래픽으로부터 네트워크를 보호하며, CloudWatch에서는 전반적인 상태 모니터링 및 로그 확인을 담당한다. 각 구성에 대해 알아보기 전 DNS 설정에 대해 먼저 알아보자.
 
 ## 가비아를 통한 DNS 설정
 
-- DNS란?
-  - 사람이 읽을 수 있는 도메인 이름(예: ddangkong.kr)을 머신이 읽을 수 있는 IP 주소(예: 192.0.2.44)로 변환하는 서버
-  - 사람이 인지하기 쉬운 영어를 통해서 숫자 4개로 되어있는 서버 주소로 들어갈 수 있도록 함
-  - IP 주소가 바뀌더라도 도메인 이름만을 알고 있다면, 언제든지 같은 서비스에 접속할 수 있다.
+DNS(Domain Name Server)란 사람이 읽을 수 있는 도메인 이름(예: ddangkong.kr)을 머신이 읽을 수 있는 IP 주소(예: 192.0.2.44)로 변환하는 서버를 말한다. 사람이 인지하기 쉬운 문자를 통해 숫자 4개로 되어있는 서버 주소로 변환하도록 하여, 사용자는 IP 주소를 알지 않아도 원하는 사이트에 접속할 수 있다. 그리고 IP 주소가 바뀌더라도 DNS를 설정해준다면, 같은 도메인 이름을 통해 언제든지 같은 서비스에 접속할 수 있다.
 
-- 가비아란
-  - 가비아는 IT 환경을 필요로 하는 기업을 대상으로 클라우드, 그룹웨어, 보안, 도메인, 호스팅에 이르는 통합적인 인프라 서비스를 제공하는 기업이다.
-  - 도메인, 웹호스팅, 홈페이지 서비스에서 나아가 자체 기술 스텍으로 개발한 IaaS(Infrastructure-as-a-Service) ‘g클라우드’와 클라우드 운영에 꼭 필요한 전반의 서비스를 제공하는 ‘매니지드 서비스’, 클라우드 기반 메일/그룹웨어 ‘하이웍스’ 등 끊임없는 연구 개발로 IT플랫폼으로서 고객의 비즈니스 성장을 돕고 있다.
-  - 우리 서비스에서는 도메인 구매 및 DNS 설정을 위해 해당 서비스를 사용했다.
-
-### 레코드의 종류
-
-- A: 특정 도메인 이름을 IP 주소에 매핑하는 DNS 레코드
-  - 작동 방식: 사용자가 웹 브라우저에 example.com을 입력하면, DNS 서버는 A 레코드를 참조하여 해당 도메인을 192.0.2.1 IP 주소로 변환하고, 그 IP 주소로 트래픽을 라우팅한다.
-  - api.dev의 경우 ~
-
-- CNAME: 하나의 도메인 이름을 다른 도메인 이름으로 매핑하는 DNS 레코드
-  - 작동 방식: CNAME 레코드는 다른 도메인의 별칭(Alias)을 정의하는 데 사용된다. 예를 들어, www.example.com을 example.com으로 리디렉션하고자 할 때 CNAME 레코드를 사용한다.
-  - 즉, www.example.com으로 요청이 오면 DNS 서버는 이를 example.com으로 변환하고, 그 후에 example.com에 대한 A 레코드 등을 참조하여 최종 IP 주소로 연결된다.
-  - `@`는 ...
-
-- 기타 레코드 종류
-  - **AAAA 레코드** : 도메인 이름을 **IPv6 주소**로 매핑
-  - **MX 레코드 (Mail Exchange Record)** : 이메일을 수신할 메일 서버를 지정
-  - **TXT 레코드 (Text Record)**: 도메인에 대한 추가적인 텍스트 정보를 제공 (주로 인증 및 정책 정보를 저장)
-  - **NS 레코드 (Name Server Record)** : 도메인을 관리하는 네임서버를 지정합니다.
-  - **SOA 레코드 (Start of Authority Record)** : 도메인에 대한 권한이 있는 네임서버와 관련된 정보를 제공 (일반적으로 도메인의 관리 정보와 리프레시 타임, 재시도 타임 등을 포함)
+가비아(Gabia)는 IT 환경을 필요로 하는 기업을 대상으로 클라우드, 그룹웨어, 보안, 도메인, 호스팅에 이르는 통합적인 인프라 서비스를 제공하는 기업이다. 도메인, 웹호스팅, 홈페이지 서비스에서 나아가 자체 기술 스텍으로 개발한 IaaS(Infrastructure-as-a-Service) ‘g클라우드’와 클라우드 운영에 꼭 필요한 전반의 서비스를 제공한다. 우리 서비스에서는 도메인 구매 및 DNS 설정을 위해 해당 서비스를 사용했다. 그렇다면 가비아를 통해 DNS를 설정하는 방법에 대해 알아보자.
 
 ### DNS 설정
 
@@ -70,99 +48,137 @@
   ![image](./image/dns-setting.png)
 
 - prod 관련 도메인 설정
-  - @ : ddangkong.kr로 연결된 값되는 주소를 의미합니다. prod 환경으로 구현된 프론트 CloudFront에 접근하는 주소입니다.
-  - api : api.ddangkong.kr로 연결되는 주소를 의미합니다. WAS와 연결되어 있는 ELB의 주소와 연결되어 있습니다.
-- dev 구조
-  - dev : dev.ddangkong.kr 에서 연결되는 주소를 의미합니다. dev 환경의 프론트 CloudFront에 접근하는 주소입니다.
-  - api.dev : api.dev.ddangkong.kr 에서 연결되는 주소를 의미합니다. WAS의 public ip가 입력되어 있습니다.
+  - @ : ddangkong.kr로 연결된 값되는 주소를 의미한다. prod 환경으로 구현된 프론트 CloudFront에 접근하는 주소이다.
+  - api : api.ddangkong.kr로 연결되는 주소를 의미한다. WAS와 연결되어 있는 ELB의 주소와 연결되어 있다.
+- dev 관련 도메인 설정
+  - dev : dev.ddangkong.kr 에서 연결되는 주소를 의미한다. dev 환경의 프론트 CloudFront에 접근하는 주소이다.
+  - api.dev : api.dev.ddangkong.kr 에서 연결되는 주소를 의미한다. WAS의 public ip가 입력되어 있다.
+
+
+### 레코드의 종류
+
+- A: 특정 도메인 이름을 IP 주소에 매핑하는 DNS 레코드
+  - 작동 방식: 사용자가 웹 브라우저에 example.com을 입력하면, DNS 서버는 A 레코드를 참조하여 해당 도메인을 192.0.2.1 IP 주소로 변환하고, 그 IP 주소로 트래픽을 라우팅한다.
+  - api.dev의 경우 EC2의 public IP를 값으로 넣기 위해 A 레코드를 사용했다.
+
+- CNAME: 하나의 도메인 이름을 다른 도메인 이름으로 매핑하는 DNS 레코드
+  - 작동 방식: CNAME 레코드는 다른 도메인의 별칭(Alias)을 정의하는 데 사용된다. 예를 들어, www.example.com 을 example.com 으로 리디렉션하고자 할 때 CNAME 레코드를 사용한다. 즉, www.example.com 으로 요청이 오면 DNS 서버는 이를 example.com으로 변환하고, 그 후에 example.com에 대한 A 레코드 등을 참조하여 최종 IP 주소로 연결된다.
+
+- 기타 레코드 종류
+  - AAAA 레코드 : 도메인 이름을 IPv6 주소로 매핑
+  - MX 레코드 (Mail Exchange Record) : 이메일을 수신할 메일 서버를 지정
+  - TXT 레코드 (Text Record): 도메인에 대한 추가적인 텍스트 정보를 제공 (주로 인증 및 정책 정보를 저장)
+  - NS 레코드 (Name Server Record) : 도메인을 관리하는 네임서버를 지정합니다.
+  - SOA 레코드 (Start of Authority Record) : 도메인에 대한 권한이 있는 네임서버와 관련된 정보를 제공 (일반적으로 도메인의 관리 정보와 리프레시 타임, 재시도 타임 등을 포함)
 
 ## 프론트엔드 인프라 구조
 
 ### S3 (Amazon Simple Storage Service)
 
-- S3란?
-  - 어디서나 원하는 양의 데이터를 저장하고 검색할 수 있도록 구축된 객체 스토리지
-- 특징
-  - 업계 최고 수준의 내구성, 가용성, 성능, 보안 및 거의 무제한의 확장성을 아주 저렴한 요금으로 제공하는 단순한 스토리지 서비스
-  - 언제든지 어디서나 원하는 양의 데이터를 저장하고 검색하는 데 사용할 수 있는 간편한 웹 서비스 인터페이스를 제공
+S3란 어디서나 원하는 양의 데이터를 저장하고 검색할 수 있도록 구축된 객체 스토리지입니다. 업계 최고 수준의 내구성, 가용성, 성능, 보안 및 거의 무제한의 확장성을 아주 저렴한 요금으로 제공하고 있습니다. 그리고 언제든지 어디서나 원하는 양의 데이터를 저장하고 검색하는 데 사용할 수 있는 간편한 웹 서비스 인터페이스를 제공합니다.
 
-- 우리 서비스에서 S3를 사용하는 이유
-  - S3는 정적 웹사이트를 직접 호스팅할 수 있는 기능을 제공합니다. React 애플리케이션은 주로 HTML, CSS, JavaScript로 구성된 정적 파일이므로 별도의 서버 없이도 S3만으로 호스팅이 가능합니다.
-  - S3는 사용한 만큼만 비용을 지불하는 구조로, 초기 비용 부담 없이 작은 프로젝트부터 큰 프로젝트까지 확장할 수 있습니다. React로 만든 정적 사이트는 서버 사이드 로직이 없기 때문에 비용 효율성이 매우 높습니다.
-  - S3는 Amazon Web Services(AWS)의 글로벌 인프라를 사용하여 대규모 트래픽을 처리할 수 있습니다. 사용자가 갑자기 늘어나더라도 추가 설정 없이 트래픽을 자동으로 처리할 수 있습니다.
-  -
-- 설정 방법
-  - 
+S3는 정적 웹사이트를 직접 호스팅할 수 있는 기능을 제공합니다. React 애플리케이션은 주로 HTML, CSS, JavaScript로 구성된 정적 파일이므로 별도의 서버 없이도 S3만으로 호스팅이 가능합니다. S3는 사용한 만큼만 비용을 지불하는 구조로, 초기 비용 부담 없이 작은 프로젝트부터 큰 프로젝트까지 확장할 수 있습니다. 추가적으로 글로벌 인프라를 사용하여 사용자가 갑자기 늘어나더라도 추가 설정 없이 트래픽을 자동으로 처리할 수 있습니다.
 
 ### CloudFront
 
-- CloudFront란
-  - 
-- 특징
-  - S3는 Amazon CloudFront와 쉽게 연동되어 글로벌 사용자에게 빠른 콘텐츠 전달이 가능합니다. CloudFront를 사용하면 전 세계의 사용자에게 빠르고 안정적인 성능을 제공할 수 있어 React 애플리케이션의 사용자 경험이 향상됩니다.
-  -
-
-- 우리 서비스에서 CloudFront를 사용하는 이유
-  - 
-- (설정 방법)
-  - 
+CloudFront란 HTML, CSS, JavaScript 및 이미지 파일과 같은 정적 및 동적 웹 콘텐츠를 사용자에게 더 빨리 배포하도록 지원하는 웹 서비스입니다. CloudFront는 S3와 와 쉽게 연동되어 글로벌 사용자에게 빠른 콘텐츠 전달이 가능하다. CloudFront를 사용하면 전 세계의 사용자에게 빠르고 안정적인 성능을 제공할 수 있어 React 애플리케이션의 사용자 경험이 좋아진다.
 
 ## 백엔드 인프라 구조
 
-### ELB (Elastic Load Balancing)
+### ALB (Applivation Load Balancing)
 
-- ELB란?
-  - 하나 이상의 가용 영역(AZ)에 있는 여러 대상 및 가상 어플라이언스에서 들어오는 애플리케이션 트래픽을 자동으로 분산하는 서비스
-- 특징
-  - 
+ELB(Elastic Load Balancing)은 둘 이상의 가용 영역에서 EC2 인스턴스, 컨테이너, IP 주소 등 여러 대상에 걸쳐 수신되는 트래픽을 자동으로 분산한다. 등록된 대상의 상태를 모니터링하면서 상태가 양호한 대상으로만 트래픽을 라우팅한다. 그 중에서 ALB는 7계층의 로드 밸런서이다. HTTP 및 HTTPS 트래픽을 처리하며 URL 경로 또는 호스트 기반의 라우팅을 지원하여 특정 요청을 다양한 백엔드 서비스로 보낼 수 있다.
 
-- 우리 서비스가 ELB를 사용하는 이유
-  - 
-- (설정 방법)
-  - 
+그렇다면 실시간 서비스에서 로드 밸런서가 필요한 이유는 무엇일까? 서비스가 중단 없이 지속적으로 운영되고, 안정적이며 효율적인 서비스를 제공하기 위해서는 고가용성 설정이 필수적이다. 이를 달성하기 위해, 우리는 시스템의 부하를 분산하고 장애 발생 시에도 서비스가 중단되지 않도록 다중화 로드 밸런서가 필요하다. 그래서 손쉽게 로드 밸런싱을 구현해주는 ALB를 사용했다.
 
 ###  EC2 (Amazon Elastic Compute Cloud)
 
-- EC2란?
-  - 클라우드에서 온디맨드 확장 가능 컴퓨팅 용량을 제공하는 서비스
-- 특징
-  - 
+EC2란 클라우드에서 온디맨드 확장 가능 컴퓨팅 용량을 제공하는 서비스이다. 원하는 만큼 필요한 만큼 사용할 수 있기 때문에 하드웨어 비용이 절감된다. 간편한 설정을 통해 컴퓨터를 빌릴 수 있어 애플리케이션을 더욱 빠르게 배포할 수 있다. 또한 복잡한 명령어 없이 간단하게 네트워크를 설정(예: 인바운드 규칙, 아웃바운드 규칙)할 수 있어 개발자는 개발 자체에 더욱 집중할 수 있다.
 
-- 우리 서비스가 EC2를 사용하는 이유
-  - 
-- EC2의 설정들
-  - 
-- 설정 방법
-  - 
+#### ip table 설정
+
+현재 ELB에서 들어온
+
+#### Swap 메모리 설정
+
+
+
+#### health 요청 설정
+
+```gradle
+dependencies { 
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	
+	...
+}
+```
+
+```yml
+management: 
+  endpoints: 
+    web: 
+      exposure: 
+        include: "health"
+```
+
 
 ### RDS (Amazon Realtional Database Service)
 
-- 클라우드에서 간편하게 데이터베이스를 설치, 운영 및 규모 조정할 수 있는 관리형 서비스
+- RDS란?
+  - 클라우드에서 간편하게 데이터베이스를 설치, 운영 및 규모 조정할 수 있는 관리형 서비스
+- 특징
+  - 관리형 데이터베이스 서비스로, 대부분의 관리 작업을 담당합니다. Amazon RDS를 사용하면 번거로운 수동 프로세스를 처리할 필요가 없어 애플리케이션과 사용자에게 집중할 수 있습니다.
+  - 백업, 소프트웨어 패치, 자동 장애 감지 및 복구를 관리
+  -
+  -
+
+- RDS를 사용하는 이유
+
+
+- Replica 설정 이유
+  - SPOF
+
 
 ## 기타
 
 ### WAF (AWS Web Application Firewall)
 
-- 객이 정의한 조건에 따라 웹 요청을 허용, 차단 또는 모니터링(계수)하는 규칙을 구성하여 공격으로부터 웹 애플리케이션을 보호하는 웹 애플리케이션 방화벽
-- IP 주소, HTTP 헤더, HTTP 본문, URI 문자열, SQL 명령어 주입 및 교차 사이트 스크립팅이 포함됩니다.
+WAF란 고객이 정의한 조건에 따라 웹 요청을 허용, 차단 또는 모니터링(계수)하는 규칙을 구성하여 공격으로부터 웹 애플리케이션을 보호하는 웹 애플리케이션 방화벽이다. 예를 들어 특정 IP 주소, HTTP 헤더, HTTP 본문 또는 URI 문자열 만의 요청을 받아들이고 이외의 요청은 차단할 수 있다.
+
+현재의 인프라 구조에서는 따로 WAF에서 처리하는 역할은 없다. 현재 서버의 요청 URI는 모두 `/api`로 시작하기 때문에, 추후 설정을 통해 `/api`로 시작하지 않는 URI 요청은 차단 할 예정이다.
 
 ### CloudWatch
 
-- CloudWatch란?
-  - AWS 리소스 전반의 데이터를 수집하여 전체 시스템의 성능을 파악할 수 있도록 하고, 사용자가 경보를 설정하고, 변화에 자동으로 대응하고, 운영 상태에 대한 통합된 뷰를 볼 수 있도록 한다.
+CloudWatch란 AWS 리소스 전반의 데이터를 수집하여 전체 시스템의 성능을 파악할 수 있도록 하고, 사용자가 경보를 설정하고, 변화에 자동으로 대응하고, 운영 상태에 대한 통합된 뷰를 볼 수 있도록 한다.
 
-- 로그 설정 방법 (24.10.01 기준)
-  - EC2에서 로그 전송 방법
+#### 모티니링 구축이 필요한 이유
 
-- Ddangkong의 로그 확인 방법
-  1. ㄱ
-  2. ㄴ
-  3. ㄷ
-  4. ㄹ
-  5. 
+
+
+#### CloudWatch 설정 방법 (24.10.01 기준)
+- EC2에서 로그 전송 방법
+
+#### Ddangkong의 모니터링 확인 방법
+
+1. [AWS 홈페이지](https://aws.amazon.com/)에 접속
+2. ddangkong 계정으로 로그인
+3. [AWS CloudWatch](https://ap-northeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-northeast-2)로 접속
+4. 우측 상단에서 지역을 서울(ap-northeast-2)로 설정
+5. 왼쪽 탭에서 '대시보드'를 클릭
+6. ddangkong에 해당하는 대시보드를 클릭하여 현재 모니터링을 확인할 수 있다.
 
 ## 참고 자료
 
-- [DNS란 무엇입니까?](https://aws.amazon.com/ko/route53/what-is-dns/) (검색 일자 : 24.10.01)
-- [가비아 회사 소개](https://company.gabia.com/introduce/corporate) (검색 일자 : 24.10.01)
-- [AWS WAF FAQ](https://aws.amazon.com/ko/waf/faq/) (검색 일자 : 24.10.01)
+- 가비아를 통한 DNS 설정
+  - [DNS란 무엇입니까?](https://aws.amazon.com/ko/route53/what-is-dns/) (검색 일자 : 24.10.01)
+  - [가비아 회사 소개](https://company.gabia.com/introduce/corporate) (검색 일자 : 24.10.01)
+- 프론트엔드 인프라 구조
+  - [Amazon S3란 무엇인가요?](https://docs.aws.amazon.com/ko_kr/AmazonS3/latest/userguide/Welcome.html) (검색 일자 : 24.10.01)
+  - [Amazon CloudFront란 무엇입니까?](https://docs.aws.amazon.com/ko_kr/AmazonCloudFront/latest/DeveloperGuide/Introduction.html) (검색 일자 : 24.10.01)
+- 백엔드 인프라 구조
+  - [Elastic Load Balancing이란 무엇인가요?](https://docs.aws.amazon.com/ko_kr/elasticloadbalancing/latest/userguide/what-is-load-balancing.html) (검색 일자 : 24.10.01)
+  - [Amazon EC2란 무엇인가요?](https://docs.aws.amazon.com/ko_kr/AWSEC2/latest/UserGuide/concepts.html) (검색 일자 : 24.10.01)
+  - [Amazon Relational Database Service(Amazon RDS)란 무엇입니까?](https://docs.aws.amazon.com/ko_kr/AmazonRDS/latest/UserGuide/Welcome.html) (검색 일자 : 24.10.01)
+- 기타
+  - [AWS WAF FAQ](https://aws.amazon.com/ko/waf/faq/) (검색 일자 : 24.10.01)
+  - [Amazon CloudWatch란 무엇인가요?](https://docs.aws.amazon.com/ko_kr/AmazonCloudWatch/latest/monitoring/WhatIsCloudWatch.html) (검색 일자 : 24.10.01)
