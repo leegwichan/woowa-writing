@@ -81,7 +81,7 @@ S3는 정적 웹사이트를 직접 호스팅할 수 있는 기능을 제공합�
 
 ### CloudFront
 
-CloudFront란 HTML, CSS, JavaScript 및 이미지 파일과 같은 정적 및 동적 웹 콘텐츠를 사용자에게 더 빨리 배포하도록 지원하는 웹 서비스입니다. CloudFront는 S3와 와 쉽게 연동되어 글로벌 사용자에게 빠른 콘텐츠 전달이 가능하다. CloudFront를 사용하면 전 세계의 사용자에게 빠르고 안정적인 성능을 제공할 수 있어 React 애플리케이션의 사용자 경험이 좋아진다.
+CloudFront란 HTML, CSS, JavaScript 및 이미지 파일과 같은 정적 및 동적 웹 콘텐츠를 사용자에게 더 빨리 배포하도록 지원하는 웹 서비스입니다. CloudFront는 S3와 와 쉽게 연동되어 글로벌 사용자에게 빠른 콘텐츠 전달이 가능하다. CloudFront를 사용하면 전 세계의 사용자에게 빠르고 안정적인 성능을 제공할 수 있어 React 애플리케이션의 사용자 경험이 좋아진다. 추가적으로 CloudFront의 캐싱 기능을 통해 S3로의 직접적인 요청 수를 줄여 S3에서 발생하는 데이터 전송 비용을 절감할 수 있다.
 
 ## 백엔드 인프라 구조
 
@@ -95,49 +95,69 @@ ELB(Elastic Load Balancing)은 둘 이상의 가용 영역에서 EC2 인스턴�
 
 EC2란 클라우드에서 온디맨드 확장 가능 컴퓨팅 용량을 제공하는 서비스이다. 원하는 만큼 필요한 만큼 사용할 수 있기 때문에 하드웨어 비용이 절감된다. 간편한 설정을 통해 컴퓨터를 빌릴 수 있어 애플리케이션을 더욱 빠르게 배포할 수 있다. 또한 복잡한 명령어 없이 간단하게 네트워크를 설정(예: 인바운드 규칙, 아웃바운드 규칙)할 수 있어 개발자는 개발 자체에 더욱 집중할 수 있다.
 
+EC2를 간단히 말하자면, OS가 설치된 하나의 컴퓨터를 대여해주는 것과 유사하다. WAS를 EC2에서 구동하기 위해서는 여러 설정들이 필요하다. 아래는 땅콩 팀에서 설정해 준 작업 일부이다.
+
 #### ip table 설정
 
-현재 ELB에서 들어온
+현재 ELB에서 들어온 HTTPS 요청을 EC2에게 80 포트로 요청을 넘긴다. 그리고 WAS는 EC2 내에서 8422 포트에서 실행되어고 있다. 그래서 80 포트로 들어온 요청을 8422 포트로 포드 포워딩 해야 한다. 포트 포워딩에는 여러 방법이 있지만, 땅콩 조에서는 명령어를 통해 ip table을 설정하는 방법을 사용했다.
 
-#### Swap 메모리 설정
-
-
-
-#### health 요청 설정
-
-```gradle
-dependencies { 
-	implementation 'org.springframework.boot:spring-boot-starter-actuator'
-	
-	...
-}
+```shell
+iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 80 -j REDIRECT --to-port 8422
 ```
 
-```yml
-management: 
-  endpoints: 
-    web: 
-      exposure: 
-        include: "health"
+그리고 아래 명령어를 통해 포트 포워딩이 잘 설정되었는지 확인할 수 있다.
+```shell
+sudo iptables -t nat -L PREROUTING -n -v
 ```
 
+#### 스왑 메모리 설정
+
+EC2는 사용하는 CPU, 메인 메모리에 따라 사용 가격이 다르기 때문에, 효율적으로 사용하기 위해서는 스왑 메모리 설정이 필수다. 스왑 메모리는 컴퓨터의 메인 메모리가 부족할 때, 일시적으로 하드 디스크나 SSD 같은 저장 장치를 마치 메모리처럼 사용하는 공간이다. 하드 디스크나 SSD를 사용하기 때문에 속도는 매우 느려질 수 있으나 메인 메모리가 부족할 때 여유 공간을 두고 활용할 수 있다는 장점이 있다.
+
+스왑 메모리는 ubuntu 20.04 기준 아래와 같이 설정한다. 현재 사용하는 EC2의 메인 메모리 크기의 2배인 2GB로 설정하는 명령어이다.
+
+```shell
+sudo dd if=/dev/zero of=/swapfile bs=128M count=16
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+```
+
+추가적으로 `/etc/fstab` 파일에 아래의 문구를 추가해 주어야 한다.
+```plain text
+/swapfile swap swap defaults 0 0
+```
+
+스왑 메모리가 잘 설정되었는지 아래의 명령어로 확인할 수 있다.
+```shell
+free -h
+```
+
+#### 헬스 체크 설정
+
+ELB는 현재 어플리케이션이 정상 작동하고 있는지 WAS에게 주기적으로 헬스 체크 요청을 보낸다. WAS에서 헬스 체크 요청에 응답을 해야 ELB는 해당 서버가 정상적으로 응답하고 있다고 인지한다. 아래와 같은 설정을 통해 헬스 체크 설정을 할 수 있다.
+
+- Spring Project에서 build.gradle 파일 설정
+  ```gradle
+  dependencies { 
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    ...
+  }
+  ```
+- application.yml 설정
+  ```yml  
+  management:   
+    endpoints:   
+      web:   
+        exposure:   
+          include: "health"  
+  ``````
 
 ### RDS (Amazon Realtional Database Service)
 
-- RDS란?
-  - 클라우드에서 간편하게 데이터베이스를 설치, 운영 및 규모 조정할 수 있는 관리형 서비스
-- 특징
-  - 관리형 데이터베이스 서비스로, 대부분의 관리 작업을 담당합니다. Amazon RDS를 사용하면 번거로운 수동 프로세스를 처리할 필요가 없어 애플리케이션과 사용자에게 집중할 수 있습니다.
-  - 백업, 소프트웨어 패치, 자동 장애 감지 및 복구를 관리
-  -
-  -
+RDS란 클라우드에서 간편하게 데이터베이스를 설치, 운영 및 규모 조정할 수 있는 관리형 서비스를 말한다. 대부분의 데이터베이스 관리 작업을 담당하며 번거로운 수동 프로세스(ex. 백업, 소프트웨어 패치, 자동 장애 감지 및 복구)를 처리할 필요가 없어 애플리케이션과 사용자에게 집중할 수 있습니다.
 
-- RDS를 사용하는 이유
-
-
-- Replica 설정 이유
-  - SPOF
-
+또한 DB의 읽기 전용 복제본(Replica)을 설정하여 애플리케이션에서 읽기 요청을 복제본으로 분산시켜 각 DB 요청 부하를 줄였고, 마스터 데이터베이스에 장애가 발생할 경우, 복제본이 즉시 새로운 마스터 역할을 맡아 데이터베이스의 가용성을 유지한다. 또한 복제본을 통해 데이터를 복구하거나, 백업을 생성할 수 있어 데이터 손실 위험을 줄일 수 있다.
 
 ## 기타
 
@@ -150,13 +170,6 @@ WAF란 고객이 정의한 조건에 따라 웹 요청을 허용, 차단 또는 
 ### CloudWatch
 
 CloudWatch란 AWS 리소스 전반의 데이터를 수집하여 전체 시스템의 성능을 파악할 수 있도록 하고, 사용자가 경보를 설정하고, 변화에 자동으로 대응하고, 운영 상태에 대한 통합된 뷰를 볼 수 있도록 한다.
-
-#### 모티니링 구축이 필요한 이유
-
-
-
-#### CloudWatch 설정 방법 (24.10.01 기준)
-- EC2에서 로그 전송 방법
 
 #### Ddangkong의 모니터링 확인 방법
 
